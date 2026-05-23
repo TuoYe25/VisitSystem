@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}受试者随访系统{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <header>
+        <nav>
+            <a href="/" class="logo">VisitSystem</a>
+            <div class="nav-links">
+                <a href="/">首页</a>
+                <a href="/subjects">受试者</a>
+                <a href="/visits">访视记录</a>
+                <a href="/reminders">提醒管理</a>
+            </div>
+        </nav>
+    </header>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    <footer>
+        <p>&copy; 2025 受试者随访提醒与访视窗口计算系统</p>
+    </footer>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
