@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+{% block title %}受试者管理{% endblock %}
+
+{% block extra_head %}
+<style>
+    .sortable { user-select: none; }
+    .sortable:hover { background: #e9ecef; }
+    .sort-icon { font-size: 10px; margin-left: 4px; }
+    .filter-row th { padding: 4px 8px; background: #f8f9fa; }
+    .filter-input { font-weight: normal; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0">受试者管理</h4>
+    <div>
+        <button class="btn btn-outline-danger btn-sm me-2" id="batchDeleteBtn" style="display:none" onclick="batchDelete()">
+            <i class="bi bi-trash"></i> 批量删除
+        </button>
+        <button class="btn btn-outline-primary btn-sm me-2" onclick="document.getElementById('importFile').click()">
+            <i class="bi bi-upload"></i> Excel批量导入
+        </button>
+        <input type="file" id="importFile" accept=".xlsx" style="display:none" onchange="handleImport(this)">
+        <a href="/api/export/subjects" class="btn btn-outline-success btn-sm me-2">
+            <i class="bi bi-download"></i> 导出Excel
+        </a>
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addSubjectModal">
+            <i class="bi bi-plus-lg"></i> 新增受试者
+        </button>
+    </div>
+</div>
+
+<!-- 筛选 -->
+<div class="mb-3">
+    <div class="btn-group btn-group-sm">
+        <a href="/subjects" class="btn btn-outline-secondary {% if not filter_status %}active{% endif %}">全部</a>
+        <a href="/subjects?status=active" class="btn btn-outline-secondary {% if filter_status == 'active' %}active{% endif %}">在组</a>
+        <a href="/subjects?status=dropout" class="btn btn-outline-secondary {% if filter_status == 'dropout' %}active{% endif %}">脱落</a>
+        <a href="/subjects?status=completed" class="btn btn-outline-secondary {% if filter_status == 'completed' %}active{% endif %}">完成</a>
+    </div>
+</div>
+
+<div class="table-card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0" id="subjectsTable">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:40px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
+                    <th class="sortable" data-col="0" style="cursor:pointer">编号 <span class="sort-icon"></span></th>
+                    <th class="sortable" data-col="1" style="cursor:pointer">姓名缩写 <span class="sort-icon"></span></th>
+                    <th class="sortable" data-col="2" style="cursor:pointer">入组日期 <span class="sort-icon"></span></th>
+                    <th class="sortable" data-col="3" style="cursor:pointer">状态 <span class="sort-icon"></span></th>
+                    <th class="sortable" data-col="4" style="cursor:pointer">脱落日期 <span class="sort-icon"></span></th>
+                    <th style="cursor:pointer">负责人</th>
+                </tr>
+                <tr class="filter-row">
+                    <th></th>
+                    <th><input type="text" class="form-control form-control-sm filter-input" data-col="0" placeholder="筛选编号..."></th>
+                    <th><input type="text" class="form-control form-control-sm filter-input" data-col="1" placeholder="筛选姓名缩写..."></th>
+                    <th><input type="text" class="form-control form-control-sm filter-input" data-col="2" placeholder="筛选日期..."></th>
+                    <th>
+                        <select class="form-select form-select-sm filter-input" data-col="3">
+                            <option value="">全部</option>
+                            <option value="在组">在组</option>
+                            <option value="脱落">脱落</option>
+                            <option value="完成">完成</option>
+                        </select>
+                    </th>
+                    <th><input type="text" class="form-control form-control-sm filter-input" data-col="4" placeholder="筛选日期..."></th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="subjectsTbody">
+                {% if subjects %}
+                {% for s in subjects %}
+                <tr data-code="{{ s.subject_code }}" data-abbr="{{ s.name_abbr }}" data-enroll="{{ s.enrollment_date }}" data-status="{{ '在组' if s.status.value == 'active' else '脱落' if s.status.value == 'dropout' else '完成' }}" data-dropout="{{ s.dropout_date or '-' }}">
+                    <td><input type="checkbox" class="row-checkbox" value="{{ s.id }}" onchange="updateBatchDeleteBtn()"></td>
+                    <td>
+                        <a href="/subjects/{{ s.id }}" class="text-decoration-none fw-bold">
+                            {{ s.subject_code }}
+                        </a>
+                    </td>
+                    <td>{{ s.name_abbr }}</td>
+                    <td>{{ s.enrollment_date }}</td>
+                    <td>
+                        {% if s.status.value == 'active' %}
+                        <span class="badge badge-normal">在组</span>
+                        {% elif s.status.value == 'dropout' %}
+                        <span class="badge badge-overdue">脱落</span>
+                        {% else %}
+                        <span class="badge bg-success">完成</span>
+                        {% endif %}
+                    </td>
+                    <td class="dropout-cell">{{ s.dropout_date or '-' }}</td>
+                    <td>{{ subject_crc_map.get(s.id, '-') }}</td>
+                </tr>
+                {% endfor %}
+                {% else %}
+                <tr id="noDataRow"><td colspan="7" class="text-center text-muted py-4">暂无受试者数据</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 新增受试者 Modal -->
+<div class="modal fade" id="addSubjectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">新增受试者</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addSubjectForm">
+                    <div class="mb-3">
+                        <label class="form-label">受试者编号</label>
+                        <input type="text" class="form-control" name="subject_code" required placeholder="如 SUB-001">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">姓名</label>
+                        <input type="text" class="form-control" name="full_name" required placeholder="如 欧阳修">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">入组日期 (D0)</label>
+                        <input type="date" class="form-control" name="enrollment_date" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="addSubject()">确定</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑受试者 Modal 已移至 subject_detail.html -->
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// ============ 排序与筛选 ============
+
+const sortState = [0, 0, 0, 0, 0]; // 0=none, 1=asc, 2=desc
+const colKeys = ['code', 'abbr', 'enroll', 'status', 'dropout'];
+
+function getCellValue(row, col) {
+    const key = colKeys[col];
+    if (key === 'enroll' || key === 'dropout') {
+        const v = row.dataset[key] || '';
+        return v === '-' ? '9999-99-99' : v;
+    }
+    return (row.dataset[key] || '').toLowerCase();
+}
+
+function sortTable() {
+    const tbody = document.getElementById('subjectsTbody');
+    const rows = [...tbody.querySelectorAll('tr:not(#noDataRow)')];
+    if (rows.length === 0) return;
+
+    // find active sort
+    let activeCol = -1, activeDir = 0;
+    for (let i = 0; i < sortState.length; i++) {
+        if (sortState[i] !== 0) { activeCol = i; activeDir = sortState[i]; break; }
+    }
+    if (activeCol === -1) return;
+
+    rows.sort((a, b) => {
+        const va = getCellValue(a, activeCol);
+        const vb = getCellValue(b, activeCol);
+        if (va < vb) return activeDir === 1 ? -1 : 1;
+        if (va > vb) return activeDir === 1 ? 1 : -1;
+        return 0;
+    });
+    rows.forEach(r => tbody.appendChild(r));
+}
+
+function updateSortIcons() {
+    document.querySelectorAll('.sortable').forEach(th => {
+        const col = parseInt(th.dataset.col);
+        const icon = th.querySelector('.sort-icon');
+        if (sortState[col] === 0) {
+            icon.textContent = '';
+        } else if (sortState[col] === 1) {
+            icon.textContent = '▲';
+        } else {
+            icon.textContent = '▼';
+        }
+    });
+}
+
+// sortable header click
+document.querySelectorAll('.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+        const col = parseInt(th.dataset.col);
+        if (sortState[col] === 0) {
+            // clear all, set this asc
+            for (let i = 0; i < sortState.length; i++) sortState[i] = 0;
+            sortState[col] = 1;
+        } else if (sortState[col] === 1) {
+            sortState[col] = 2;
+        } else {
+            sortState[col] = 0;
+        }
+        updateSortIcons();
+        sortTable();
+    });
+});
+
+// filter inputs
+document.querySelectorAll('.filter-input').forEach(input => {
+    input.addEventListener('input', applyFilters);
+    if (input.tagName === 'SELECT') {
+        input.addEventListener('change', applyFilters);
+    }
+});
+
+function applyFilters() {
+    const filters = [];
+    document.querySelectorAll('.filter-input').forEach(input => {
+        filters[parseInt(input.dataset.col)] = input.value.trim().toLowerCase();
+    });
+
+    const tbody = document.getElementById('subjectsTbody');
+    const rows = tbody.querySelectorAll('tr:not(#noDataRow)');
+    let visibleCount = 0;
+
+    rows.forEach(row => {
+        let show = true;
+        for (let i = 0; i < colKeys.length; i++) {
+            const fv = filters[i];
+            if (!fv) continue;
+            const cv = getCellValue(row, i);
+            if (i === 3) {
+                // status: exact match since it's a select
+                if (cv !== fv) { show = false; break; }
+            } else {
+                if (!cv.includes(fv)) { show = false; break; }
+            }
+        }
+        row.style.display = show ? '' : 'none';
+        if (show) visibleCount++;
+    });
+
+    // show/hide no-data row
+    const noDataRow = document.getElementById('noDataRow');
+    if (noDataRow) {
+        noDataRow.style.display = visibleCount === 0 ? '' : 'none';
+    }
+}
+
+// ============ 原有功能 ============
+async function addSubject() {
+    const form = document.getElementById('addSubjectForm');
+    const fd = new FormData(form);
+    const data = Object.fromEntries(fd);
+
+    // 前端校验
+    const code = (data.subject_code || '').trim();
+    const name = (data.full_name || '').trim();
+    const enroll = data.enrollment_date || '';
+
+    if (!code) { showToast('受试者编号未填写', 'error'); return; }
+    if (!name) { showToast('姓名未填写', 'error'); return; }
+    if (!enroll) { showToast('入组日期未填写', 'error'); return; }
+
+    // 编号格式校验：字母/数字/连字符，2-20位
+    if (!/^[A-Za-z0-9\-_]{2,20}$/.test(code)) {
+        showToast('受试者编号格式不正确（仅允许字母、数字、连字符、下划线，2-20位）', 'error');
+        return;
+    }
+    // 姓名校验：中文，2-4字
+    if (!/^[\u4e00-\u9fff]{2,4}$/.test(name)) {
+        showToast('姓名格式不正确（仅允许中文，2-4字）', 'error');
+        return;
+    }
+
+    await api('/api/subjects', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({subject_code: code, full_name: name, enrollment_date: enroll})
+    });
+    location.reload();
+}
+
+// 编辑和删除功能已移至 subject_detail.html
+
+async function handleImport(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+        const res = await fetch('/api/import', { method: 'POST', body: fd });
+        const result = await res.json();
+        if (result.success > 0) {
+            showToast(`导入完成：成功 ${result.success} 条，失败 ${result.failed} 条`);
+        }
+        if (result.errors.length > 0) {
+            alert('导入错误:\n' + result.errors.join('\n'));
+        }
+        location.reload();
+    } catch (e) {
+        showToast('导入失败: ' + e.message, 'error');
+    }
+    input.value = '';
+}
+
+function toggleSelectAll(el) {
+    document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = el.checked);
+    updateBatchDeleteBtn();
+}
+
+function updateBatchDeleteBtn() {
+    const checked = document.querySelectorAll('.row-checkbox:checked').length;
+    document.getElementById('batchDeleteBtn').style.display = checked > 0 ? '' : 'none';
+}
+
+async function batchDelete() {
+    const ids = [...document.querySelectorAll('.row-checkbox:checked')].map(cb => parseInt(cb.value));
+    if (!ids.length) return;
+    if (!confirm(`确定删除选中的 ${ids.length} 名受试者及其所有访视记录？此操作不可撤销。`)) return;
+    await api('/api/subjects/batch-delete', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ids})
+    });
+    location.reload();
+}
+</script>
+{% endblock %}

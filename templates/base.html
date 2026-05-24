@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}受试者随访提醒系统{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        :root {
+            --sidebar-width: 240px;
+            --primary: #0d6efd;
+            --danger: #dc3545;
+            --warning: #ffc107;
+            --success: #198754;
+        }
+        body { background: #f5f6fa; font-size: 14px; }
+        .sidebar {
+            position: fixed; top: 0; left: 0; bottom: 0;
+            width: var(--sidebar-width); background: #1e293b; color: #cbd5e1;
+            padding: 20px 0; z-index: 1000;
+        }
+        .sidebar .logo {
+            padding: 0 20px 20px; font-size: 18px; font-weight: 700;
+            color: #fff; border-bottom: 1px solid #334155; margin-bottom: 16px;
+        }
+        .sidebar .nav-link {
+            color: #cbd5e1; padding: 10px 20px; border-radius: 0;
+            transition: all 0.15s;
+        }
+        .sidebar .nav-link:hover, .sidebar .nav-link.active {
+            background: #334155; color: #fff;
+        }
+        .sidebar .nav-link i { margin-right: 10px; width: 20px; text-align: center; }
+        .main-content {
+            margin-left: var(--sidebar-width); padding: 24px 32px; min-height: 100vh;
+        }
+        .stat-card {
+            background: #fff; border-radius: 12px; padding: 20px 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 16px;
+        }
+        .stat-card .value { font-size: 32px; font-weight: 700; }
+        .stat-card .label { color: #64748b; font-size: 13px; margin-top: 4px; }
+        .table-card {
+            background: #fff; border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden;
+        }
+        .table-card .card-header {
+            background: #fff; border-bottom: 1px solid #e2e8f0;
+            padding: 16px 24px; font-weight: 600;
+        }
+        .badge-overdue { background: #dc3545; }
+        .badge-warning { background: #ffc107; color: #000; }
+        .badge-normal { background: #198754; }
+        .badge-critical { background: #6f42c1; }
+        .btn-action { padding: 2px 8px; font-size: 12px; }
+        .modal-backdrop { z-index: 1050; }
+        .toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <!-- 侧边栏 -->
+    <nav class="sidebar">
+        <div class="logo">
+            <i class="bi bi-clipboard2-pulse"></i> VisitSystem
+        </div>
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link {% if request.url.path == '/' %}active{% endif %}" href="/">
+                    <i class="bi bi-speedometer2"></i> 仪表盘
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if '/subjects' in request.url.path %}active{% endif %}" href="/subjects">
+                    <i class="bi bi-people"></i> 受试者管理
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if '/calendar' in request.url.path %}active{% endif %}" href="/calendar">
+                    <i class="bi bi-calendar3"></i> 访视日历
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if '/deviations' in request.url.path %}active{% endif %}" href="/deviations">
+                    <i class="bi bi-exclamation-triangle"></i> 方案偏离
+                </a>
+            </li>
+            {% if current_user and current_user.role.value == 'PI' %}
+            <li class="nav-item">
+                <a class="nav-link {% if '/users' in request.url.path %}active{% endif %}" href="/users">
+                    <i class="bi bi-person-gear"></i> 用户管理
+                </a>
+            </li>
+            {% endif %}
+        </ul>
+        {% if current_user %}
+        <div style="position:absolute; bottom:20px; left:20px; right:20px; border-top:1px solid #334155; padding-top:16px;">
+            <div style="color:#94a3b8; font-size:12px; margin-bottom:4px;">
+                {{ current_user.display_name }}
+                <span style="padding:1px 8px; border-radius:8px; font-size:10px;
+                    {% if current_user.role.value == 'PI' %}background:#ef4444;color:#fff{% else %}background:#22c55e;color:#fff{% endif %}">
+                    {{ current_user.role.value }}
+                </span>
+            </div>
+            <a href="#" onclick="logout(); return false;" style="color:#94a3b8; font-size:12px; text-decoration:none;">
+                <i class="bi bi-box-arrow-right"></i> 退出登录
+            </a>
+        </div>
+        {% endif %}
+    </nav>
+
+    <!-- 主内容 -->
+    <div class="main-content">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Toast 通知容器 -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 认证检查（优先 localStorage，回退到 Cookie）
+        let token = localStorage.getItem('token');
+        if (!token) {
+            const cookies = document.cookie.split(';');
+            for (const c of cookies) {
+                const [k, v] = c.trim().split('=');
+                if (k === 'token' && v) {
+                    token = v;
+                    localStorage.setItem('token', v);
+                    break;
+                }
+            }
+        }
+        if (!token && !window.location.pathname.includes('/login')) {
+            window.location.href = '/login';
+        }
+
+        function logout() {
+            localStorage.clear();
+            document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+            window.location.href = '/login';
+        }
+
+        function showToast(msg, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            const bg = type === 'error' ? 'bg-danger' : 'bg-success';
+            const html = `
+                <div class="toast align-items-center text-white ${bg} border-0" role="alert">
+                    <div class="d-flex">
+                        <div class="toast-body">${msg}</div>
+                        <button class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                    </div>
+                </div>`;
+            container.insertAdjacentHTML('beforeend', html);
+            const toastEl = container.lastElementChild;
+            const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
+            toast.show();
+            toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
+        }
+
+        // 全局 AJAX 封装（带认证）
+        async function api(url, options = {}) {
+            options.headers = {
+                ...options.headers,
+                'Authorization': 'Bearer ' + token
+            };
+            try {
+                const res = await fetch(url, options);
+                if (!res.ok) {
+                    if (res.status === 401) {
+                        logout();
+                        return;
+                    }
+                    const err = await res.json();
+                    let msg = '请求失败';
+                    const detail = err.detail;
+                    if (typeof detail === 'string') {
+                        msg = detail;
+                    } else if (Array.isArray(detail)) {
+                        const locMap = {
+                            'subject_code': '受试者编号', 'full_name': '姓名',
+                            'enrollment_date': '入组日期', 'status': '状态',
+                            'dropout_date': '脱落日期', 'username': '用户名',
+                            'password': '密码', 'display_name': '显示名称', 'role': '角色'
+                        };
+                        msg = detail.map(d => {
+                            const field = d.loc[d.loc.length - 1];
+                            const label = locMap[field] || field;
+                            if (d.msg === 'field required' || d.type === 'value_error.missing') {
+                                return label + '未填写';
+                            }
+                            if (d.type === 'string_too_short') {
+                                return label + '未填写';
+                            }
+                            if (d.type === 'value_error') {
+                                const msg = (d.msg || '').replace(/^Value error,\s*/, '');
+                                return msg || (label + '格式不正确');
+                            }
+                            return label + ': ' + d.msg;
+                        }).join('；');
+                    }
+                    throw new Error(msg);
+                }
+                return await res.json();
+            } catch (e) {
+                showToast(e.message, 'error');
+                throw e;
+            }
+        }
+    </script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

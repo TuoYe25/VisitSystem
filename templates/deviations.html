@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}方案偏离报表{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0">方案偏离报表</h4>
+    <a href="/api/export/deviations" class="btn btn-outline-success btn-sm">
+        <i class="bi bi-download"></i> 导出Excel
+    </a>
+</div>
+
+<div class="table-card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0" id="deviationTable">
+            <thead class="table-light">
+                <tr>
+                    <th class="sortable" data-sort="code">受试者编号 <span class="sort-icon"></span></th>
+                    <th class="sortable" data-sort="abbr">姓名缩写 <span class="sort-icon"></span></th>
+                    <th class="sortable" data-sort="label">访视节点 <span class="sort-icon"></span></th>
+                    <th class="sortable" data-sort="planned">计划日期 <span class="sort-icon"></span></th>
+                    <th>窗口范围</th>
+                    <th class="sortable" data-sort="actual">实际日期 <span class="sort-icon"></span></th>
+                    <th class="sortable" data-sort="type">偏离类型 <span class="sort-icon"></span></th>
+                </tr>
+                <tr class="filter-row">
+                    <th><input type="text" class="form-control form-control-sm filter-input" data-filter="code" placeholder="筛选编号"></th>
+                    <th><input type="text" class="form-control form-control-sm filter-input" data-filter="abbr" placeholder="筛选缩写"></th>
+                    <th><input type="text" class="form-control form-control-sm filter-input" data-filter="label" placeholder="筛选节点"></th>
+                    <th><input type="text" class="form-control form-control-sm filter-input" data-filter="planned" placeholder="筛选日期"></th>
+                    <th></th>
+                    <th><input type="text" class="form-control form-control-sm filter-input" data-filter="actual" placeholder="筛选日期"></th>
+                    <th>
+                        <select class="form-select form-select-sm filter-select" data-filter="type">
+                            <option value="">全部</option>
+                            <option value="超窗未完成">超窗未完成</option>
+                            <option value="窗口外完成">窗口外完成</option>
+                            <option value="受试者脱落">受试者脱落</option>
+                        </select>
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if deviations %}
+                {% for d in deviations %}
+                <tr data-code="{{ d.subject_code }}" data-abbr="{{ d.name_abbr }}" data-label="{{ d.visit_label }}"
+                    data-planned="{{ d.planned_date }}" data-actual="{{ d.actual_date or '未完成' }}"
+                    data-type="{% if d.deviation_type == 'overdue' %}超窗未完成{% elif d.deviation_type == 'out_of_window' %}窗口外完成{% elif d.deviation_type == 'skipped' %}受试者脱落{% endif %}">
+                    <td>
+                        <a href="/subjects/{{ d.subject_id }}" class="text-decoration-none fw-bold">
+                            {{ d.subject_code }}
+                        </a>
+                    </td>
+                    <td>{{ d.name_abbr }}</td>
+                    <td>{{ d.visit_label }}</td>
+                    <td>{{ d.planned_date }}</td>
+                    <td>{{ d.window_start }} ~ {{ d.window_end }}</td>
+                    <td>{{ d.actual_date or '未完成' }}</td>
+                    <td>
+                        {% if d.deviation_type == 'overdue' %}
+                        <span class="badge badge-overdue">超窗未完成</span>
+                        {% elif d.deviation_type == 'out_of_window' %}
+                        <span class="badge bg-warning text-dark">窗口外完成</span>
+                        {% elif d.deviation_type == 'skipped' %}
+                        <span class="badge bg-secondary">受试者脱落</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                {% else %}
+                <tr id="emptyRow"><td colspan="7" class="text-center text-muted py-5">
+                    <i class="bi bi-check-circle text-success fs-4 d-block mb-2"></i>
+                    暂无方案偏离记录
+                </td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function() {
+    const table = document.getElementById('deviationTable');
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr[data-code]'));
+    const emptyRow = document.getElementById('emptyRow');
+
+    // ===== 排序 =====
+    let sortCol = null;
+    let sortDir = 0; // 0=none, 1=asc, 2=desc
+
+    table.querySelectorAll('th.sortable').forEach(th => {
+        th.style.cursor = 'pointer';
+        th.addEventListener('click', () => {
+            const col = th.dataset.sort;
+            if (sortCol === col) {
+                sortDir = (sortDir + 1) % 3;
+            } else {
+                sortCol = col;
+                sortDir = 1;
+            }
+            // 更新图标
+            table.querySelectorAll('.sort-icon').forEach(icon => icon.textContent = '');
+            if (sortDir === 1) th.querySelector('.sort-icon').textContent = ' ▲';
+            else if (sortDir === 2) th.querySelector('.sort-icon').textContent = ' ▼';
+            applySortAndFilter();
+        });
+    });
+
+    // ===== 筛选 =====
+    const filters = {};
+    table.querySelectorAll('.filter-input, .filter-select').forEach(el => {
+        el.addEventListener('input', () => {
+            filters[el.dataset.filter] = el.value.toLowerCase();
+            applySortAndFilter();
+        });
+    });
+
+    function applySortAndFilter() {
+        let visible = rows.filter(r => {
+            for (const [key, val] of Object.entries(filters)) {
+                if (!val) continue;
+                const cellVal = (r.dataset[key] || '').toLowerCase();
+                if (!cellVal.includes(val)) return false;
+            }
+            return true;
+        });
+
+        if (sortCol && sortDir > 0) {
+            visible.sort((a, b) => {
+                let va = a.dataset[sortCol] || '';
+                let vb = b.dataset[sortCol] || '';
+                // 日期列特殊处理
+                if (sortCol === 'planned' || sortCol === 'actual') {
+                    if (va === '未完成') va = '9999-99-99';
+                    if (vb === '未完成') vb = '9999-99-99';
+                }
+                const cmp = va.localeCompare(vb, 'zh-CN');
+                return sortDir === 1 ? cmp : -cmp;
+            });
+        }
+
+        // 重新排列
+        rows.forEach(r => r.remove());
+        if (visible.length === 0) {
+            if (emptyRow) emptyRow.style.display = '';
+            else {
+                const tr = document.createElement('tr');
+                tr.innerHTML = '<td colspan="7" class="text-center text-muted py-5">无匹配结果</td>';
+                tbody.appendChild(tr);
+            }
+        } else {
+            if (emptyRow) emptyRow.style.display = 'none';
+            visible.forEach(r => tbody.appendChild(r));
+        }
+    }
+})();
+</script>
+{% endblock %}

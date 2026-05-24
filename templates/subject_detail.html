@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block title %}{{ subject.subject_code }} - 访视详情{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <a href="/subjects" class="text-muted text-decoration-none me-2"><i class="bi bi-arrow-left"></i> 返回</a>
+        <h4 class="d-inline mb-0">{{ subject.subject_code }} ({{ subject.full_name }} / {{ subject.name_abbr }})</h4>
+        <span class="ms-2 badge {% if subject.status.value == 'active' %}badge-normal{% elif subject.status.value == 'dropout' %}badge-overdue{% else %}bg-success{% endif %}">
+            {% if subject.status.value == 'active' %}在组{% elif subject.status.value == 'dropout' %}脱落{% else %}完成{% endif %}
+        </span>
+    </div>
+    <div>
+        <button class="btn btn-outline-secondary btn-sm me-2" onclick="editSubject({{ subject.id }}, '{{ subject.subject_code }}', '{{ subject.full_name }}', '{{ subject.enrollment_date }}', '{{ subject.status.value }}', {{ assigned_crc_ids[0] if assigned_crc_ids else 0 }})">
+            <i class="bi bi-pencil"></i> 编辑
+        </button>
+        <button class="btn btn-outline-danger btn-sm" onclick="deleteSubject({{ subject.id }})">
+            <i class="bi bi-trash"></i> 删除
+        </button>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="value text-primary">{{ subject.subject_code }}</div>
+            <div class="label">受试者编号</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="value">{{ subject.enrollment_date }}</div>
+            <div class="label">入组日期 (D0)</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="value">{{ visits|length }}</div>
+            <div class="label">访视节点总数</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        {% set completed = visits|selectattr('status.value', 'equalto', 'completed')|list|length %}
+        <div class="stat-card">
+            <div class="value text-success">{{ completed }}</div>
+            <div class="label">已完成</div>
+        </div>
+    </div>
+</div>
+
+<div class="table-card">
+    <div class="card-header">
+        <i class="bi bi-list-ul me-2"></i>访视计划
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>节点</th>
+                    <th>类型</th>
+                    <th>计划日期</th>
+                    <th>窗口开始</th>
+                    <th>窗口结束</th>
+                    <th>实际日期</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in visits %}
+                <tr class="{% if v.status.value == 'deviation' %}table-danger{% elif v.status.value == 'completed' %}table-success{% elif v.status.value == 'skipped' %}table-secondary{% endif %}">
+                    <td>
+                        <strong>{{ v.visit_label }}</strong>
+                        {% if v.is_critical %}<span class="badge badge-critical ms-1">关键</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if v.visit_type.value == 'screening' %}筛选期
+                        {% elif v.visit_type.value == 'treatment' %}治疗期
+                        {% else %}随访期
+                        {% endif %}
+                    </td>
+                    <td>{{ v.planned_date }}</td>
+                    <td>{{ v.window_start }}</td>
+                    <td>{{ v.window_end }}</td>
+                    <td>{{ v.actual_date or '-' }}</td>
+                    <td>
+                        {% if v.status.value == 'pending' %}
+                        <span class="badge bg-secondary">待访视</span>
+                        {% elif v.status.value == 'completed' %}
+                        <span class="badge badge-normal">已完成</span>
+                        {% elif v.status.value == 'deviation' %}
+                        <span class="badge badge-overdue">方案偏离</span>
+                        {% else %}
+                        <span class="badge bg-secondary">已跳过</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if subject.status.value == 'active' %}
+                            {% if v.status.value == 'pending' or (v.status.value == 'deviation' and not v.actual_date) %}
+                            <button class="btn btn-sm btn-outline-success btn-action"
+                                    onclick="fillActual({{ subject.id }}, {{ v.visit_order }}, '{{ v.visit_label }}', false)">
+                                <i class="bi bi-check-lg"></i> 回填
+                            </button>
+                            {% elif v.status.value == 'completed' or (v.status.value == 'deviation' and v.actual_date) %}
+                            <button class="btn btn-sm btn-outline-warning btn-action"
+                                    onclick="fillActual({{ subject.id }}, {{ v.visit_order }}, '{{ v.visit_label }}', true)">
+                                <i class="bi bi-pencil"></i> 修改
+                            </button>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 回填 Modal -->
+<div class="modal fade" id="fillActualModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">回填访视日期</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-2" id="fillVisitLabel"></p>
+                <p class="text-warning small">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    回填后将自动重算后续所有访视计划日期
+                </p>
+                <input type="date" class="form-control" id="fillActualDate">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="confirmFill()">确认回填</button>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- 编辑 Modal -->
+<div class="modal fade" id="editSubjectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">编辑受试者</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editSubjectForm">
+                    <input type="hidden" id="edit_subject_id">
+                    <div class="mb-3">
+                        <label class="form-label">姓名</label>
+                        <input type="text" class="form-control" id="edit_full_name">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">状态</label>
+                        <select class="form-select" id="edit_status" onchange="toggleDropoutDate()">
+                            <option value="active">在组</option>
+                            <option value="dropout">脱落</option>
+                            <option value="completed">完成</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="dropoutDateGroup" style="display:none">
+                        <label class="form-label">脱落日期</label>
+                        <input type="date" class="form-control" id="edit_dropout_date">
+                    </div>
+                    {% if current_user.role.value == 'PI' and crcs %}
+                    <div class="mb-3">
+                        <label class="form-label">负责人</label>
+                        <select class="form-select" id="edit_crc_id">
+                            <option value="0">未分配</option>
+                            {% for c in crcs %}
+                            <option value="{{ c.id }}">{{ c.display_name }} ({{ c.username }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveSubject()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let fillSubjectId, fillVisitOrder, isEditMode;
+let currentEditId = null;
+
+function editSubject(id, code, name, enroll, status, crcId) {
+    currentEditId = id;
+    document.getElementById('edit_subject_id').value = id;
+    document.getElementById('edit_full_name').value = name;
+    document.getElementById('edit_status').value = status;
+    toggleDropoutDate();
+    var crcSelect = document.getElementById('edit_crc_id');
+    if (crcSelect) {
+        crcSelect.value = crcId || 0;
+    }
+    new bootstrap.Modal(document.getElementById('editSubjectModal')).show();
+}
+
+function toggleDropoutDate() {
+    const status = document.getElementById('edit_status').value;
+    document.getElementById('dropoutDateGroup').style.display = status === 'dropout' ? 'block' : 'none';
+}
+
+async function saveSubject() {
+    const id = document.getElementById('edit_subject_id').value;
+    const body = {
+        full_name: document.getElementById('edit_full_name').value,
+        status: document.getElementById('edit_status').value,
+    };
+    if (body.status === 'dropout') {
+        body.dropout_date = document.getElementById('edit_dropout_date').value || null;
+    }
+    var crcSelect = document.getElementById('edit_crc_id');
+    if (crcSelect) {
+        body.crc_id = parseInt(crcSelect.value) || 0;
+    }
+    await api(`/api/subjects/${id}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+    });
+    location.reload();
+}
+
+async function deleteSubject(id) {
+    if (!confirm('确定删除该受试者及其所有访视记录？此操作不可撤销。')) return;
+    await api(`/api/subjects/${id}`, { method: 'DELETE' });
+    location.href = '/subjects';
+}
+
+function fillActual(subjectId, visitOrder, label, editMode) {
+    fillSubjectId = subjectId;
+    fillVisitOrder = visitOrder;
+    isEditMode = editMode;
+    document.getElementById('fillVisitLabel').textContent = (editMode ? '修改' : '回填') + '访视日期: ' + label;
+    document.getElementById('fillActualDate').value = new Date().toISOString().split('T')[0];
+    new bootstrap.Modal(document.getElementById('fillActualModal')).show();
+}
+
+async function confirmFill() {
+    const date = document.getElementById('fillActualDate').value;
+    if (!date) return;
+    await api(`/api/subjects/${fillSubjectId}/visits/${fillVisitOrder}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ actual_date: date })
+    });
+    location.reload();
+}
+</script>
+{% endblock %}

@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block title %}仪表盘 - 受试者随访提醒系统{% endblock %}
+
+{% block content %}
+<h4 class="mb-4">仪表盘</h4>
+
+<!-- 统计卡片 -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="value text-primary">{{ active_count }}</div>
+            <div class="label">在组受试者</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="value text-danger">{{ dropout_count }}</div>
+            <div class="label">脱落</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="value text-success">{{ completed_count }}</div>
+            <div class="label">已完成</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="value text-warning">{{ alerts.today|length }}</div>
+            <div class="label">今日待访视</div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- 今日待访视 -->
+    <div class="col-md-6 mb-4">
+        <div class="table-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-calendar-check text-danger me-2"></i>今日待访视</span>
+                <span class="badge bg-secondary">{{ alerts.today|length }}</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>受试者</th>
+                            <th>访视节点</th>
+                            <th>计划日期</th>
+                            <th>窗口截止</th>
+                            <th>状态</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if alerts.today %}
+                        {% for item in alerts.today %}
+                        <tr>
+                            <td>
+                                <a href="/subjects/{{ item.subject_id }}" class="text-decoration-none">
+                                    {{ item.subject_code }} ({{ item.name_abbr }})
+                                </a>
+                            </td>
+                            <td>
+                                {{ item.visit_label }}
+                                {% if item.is_critical %}
+                                <span class="badge badge-critical">关键</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ item.planned_date }}</td>
+                            <td>{{ item.window_end }}</td>
+                            <td>
+                                {% if item.window_status == 'overdue' %}
+                                <span class="badge badge-overdue">超窗</span>
+                                {% elif item.window_status == 'warning' %}
+                                <span class="badge badge-warning">剩{{ item.days_remaining }}天</span>
+                                {% else %}
+                                <span class="badge badge-normal">正常</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr><td colspan="5" class="text-center text-muted py-3">今日无需访视</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 明日待访视 -->
+    <div class="col-md-6 mb-4">
+        <div class="table-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-calendar-event text-warning me-2"></i>明日待访视</span>
+                <span class="badge bg-secondary">{{ alerts.tomorrow|length }}</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>受试者</th>
+                            <th>访视节点</th>
+                            <th>计划日期</th>
+                            <th>窗口截止</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if alerts.tomorrow %}
+                        {% for item in alerts.tomorrow %}
+                        <tr>
+                            <td>
+                                <a href="/subjects/{{ item.subject_id }}" class="text-decoration-none">
+                                    {{ item.subject_code }} ({{ item.name_abbr }})
+                                </a>
+                            </td>
+                            <td>{{ item.visit_label }}
+                                {% if item.is_critical %}<span class="badge badge-critical">关键</span>{% endif %}
+                            </td>
+                            <td>{{ item.planned_date }}</td>
+                            <td>{{ item.window_end }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-3">明日无需访视</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 本周待访视 -->
+<div class="row">
+    <div class="col-12">
+        <div class="table-card">
+            <div class="card-header">
+                <i class="bi bi-calendar-week text-primary me-2"></i>本周待访视（7日内）
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>受试者</th>
+                            <th>访视节点</th>
+                            <th>计划日期</th>
+                            <th>窗口开始</th>
+                            <th>窗口截止</th>
+                            <th>剩余天数</th>
+                            <th>状态</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if alerts.this_week %}
+                        {% for item in alerts.this_week %}
+                        <tr {% if item.window_status == 'overdue' %}class="table-danger"{% elif item.window_status == 'warning' %}class="table-warning"{% endif %}>
+                            <td>
+                                <a href="/subjects/{{ item.subject_id }}" class="text-decoration-none">
+                                    {{ item.subject_code }} ({{ item.name_abbr }})
+                                </a>
+                            </td>
+                            <td>{{ item.visit_label }}
+                                {% if item.is_critical %}<span class="badge badge-critical">关键</span>{% endif %}
+                            </td>
+                            <td>{{ item.planned_date }}</td>
+                            <td>{{ item.window_start }}</td>
+                            <td>{{ item.window_end }}</td>
+                            <td>{{ item.days_remaining }}天</td>
+                            <td>
+                                {% if item.window_status == 'overdue' %}
+                                <span class="badge badge-overdue">超窗</span>
+                                {% elif item.window_status == 'warning' %}
+                                <span class="badge badge-warning">预警</span>
+                                {% else %}
+                                <span class="badge badge-normal">正常</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr><td colspan="7" class="text-center text-muted py-3">本周暂无待访视</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 最近偏离 -->
+{% if deviations %}
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="table-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-exclamation-triangle text-danger me-2"></i>方案偏离记录</span>
+                <a href="/deviations" class="btn btn-sm btn-outline-danger">查看全部</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>受试者</th>
+                            <th>访视节点</th>
+                            <th>计划日期</th>
+                            <th>实际日期</th>
+                            <th>偏离类型</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for d in deviations[:5] %}
+                        <tr>
+                            <td>{{ d.subject_code }} ({{ d.name_abbr }})</td>
+                            <td>{{ d.visit_label }}</td>
+                            <td>{{ d.planned_date }}</td>
+                            <td>{{ d.actual_date or '未完成' }}</td>
+                            <td>
+                                {% if d.deviation_type == 'overdue' %}
+                                <span class="badge badge-overdue">超窗未完成</span>
+                                {% elif d.deviation_type == 'out_of_window' %}
+                                <span class="badge bg-warning text-dark">窗口外完成</span>
+                                {% else %}
+                                <span class="badge bg-secondary">已跳过</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

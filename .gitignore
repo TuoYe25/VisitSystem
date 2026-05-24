@@ -42,10 +42,14 @@ ENV/
 
 # Logs
 *.log
+*.txt
 
 # Environment variables
 .env
 .env.local
+
+# Test data
+tests/
 
 # Test coverage
 .coverage

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}访视日历{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0">访视日历视图</h4>
+    <div>
+        <button class="btn btn-outline-secondary btn-sm me-2" onclick="prevWeek()"><i class="bi bi-chevron-left"></i></button>
+        <span class="fw-bold mx-2" id="weekRange"></span>
+        <button class="btn btn-outline-secondary btn-sm" onclick="nextWeek()"><i class="bi bi-chevron-right"></i></button>
+    </div>
+</div>
+
+<div class="table-card">
+    <div class="table-responsive">
+        <table class="table table-bordered mb-0" id="calendarTable">
+            <thead class="table-light" id="calendarHead"></thead>
+            <tbody id="calendarBody"></tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// 访视数据
+const subjectsData = [
+    {% for s in subjects %}
+    { id: {{ s.id }}, code: '{{ s.subject_code }}', name: '{{ s.name_abbr }}', full_name: '{{ s.full_name }}', enroll: '{{ s.enrollment_date }}' },
+    {% endfor %}
+];
+
+let currentWeekStart = getMonday(new Date());
+
+function getMonday(d) {
+    const date = new Date(d);
+    const day = date.getDay();
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+    date.setDate(diff);
+    date.setHours(0,0,0,0);
+    return date;
+}
+
+function formatDate(d) {
+    return d.toISOString().split('T')[0];
+}
+
+function prevWeek() {
+    currentWeekStart.setDate(currentWeekStart.getDate() - 7);
+    renderCalendar();
+}
+
+function nextWeek() {
+    currentWeekStart.setDate(currentWeekStart.getDate() + 7);
+    renderCalendar();
+}
+
+async function renderCalendar() {
+    // 生成星期标题
+    const days = ['一', '二', '三', '四', '五', '六', '日'];
+    let headHtml = '<tr><th style="width:120px">受试者</th>';
+    const weekDates = [];
+    for (let i = 0; i < 7; i++) {
+        const d = new Date(currentWeekStart);
+        d.setDate(d.getDate() + i);
+        weekDates.push(d);
+        headHtml += `<th>${days[i]}<br><small>${formatDate(d)}</small></th>`;
+    }
+    headHtml += '</tr>';
+    document.getElementById('calendarHead').innerHTML = headHtml;
+    document.getElementById('weekRange').textContent =
+        `${formatDate(currentWeekStart)} ~ ${formatDate(weekDates[6])}`;
+
+    // 获取所有受试者的访视数据
+    let bodyHtml = '';
+    for (const s of subjectsData) {
+        try {
+            const res = await fetch(`/api/subjects/${s.id}/visits`);
+            const visits = await res.json();
+            bodyHtml += `<tr><td class="fw-bold">${s.code}<br><small class="text-muted">${s.name}</small></td>`;
+
+            for (const wd of weekDates) {
+                const wdStr = formatDate(wd);
+                let cellContent = '';
+                for (const v of visits) {
+                    if (v.status === 'skipped') continue;
+                    const planned = v.planned_date;
+                    const wStart = v.window_start;
+                    const wEnd = v.window_end;
+
+                    if (planned === wdStr) {
+                        const badgeClass = v.status === 'completed' ? 'bg-success' :
+                                          v.status === 'deviation' ? 'bg-danger' : 'bg-primary';
+                        cellContent += `<span class="badge ${badgeClass} d-block mb-1" style="font-size:10px">${v.visit_label}</span>`;
+                    } else if (wdStr >= wStart && wdStr <= wEnd && v.status !== 'completed' && v.status !== 'deviation') {
+                        cellContent += `<span class="badge bg-light text-dark d-block mb-1" style="font-size:10px; border:1px dashed #ccc">${v.visit_label}窗</span>`;
+                    }
+                }
+                bodyHtml += `<td>${cellContent || ''}</td>`;
+            }
+            bodyHtml += '</tr>';
+        } catch(e) {}
+    }
+    document.getElementById('calendarBody').innerHTML = bodyHtml || '<tr><td colspan="8" class="text-center py-4 text-muted">暂无数据</td></tr>';
+}
+
+renderCalendar();
+</script>
+{% endblock %}
