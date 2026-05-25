@@ -99,11 +99,10 @@ python app.py
 
 ## 测试数据
 
-`tests/` 目录内含三份测试 Excel：
+`tests/` 目录内含两份测试 Excel：
 
 | 文件 | 说明 |
 |------|------|
-| test_subjects_120.xlsx | 120 名受试者完整数据 |
 | test_subjects_pi_60.xlsx | PI 权限测试（60 名） |
 | test_subjects_crc_60.xlsx | CRC 权限测试（60 名） |
 
