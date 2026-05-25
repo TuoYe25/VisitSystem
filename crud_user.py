@@ -65,6 +65,39 @@ def unassign_subject_from_crc(session: Session, subject_id: int, crc_id: int):
         session.commit()
 
 
+def batch_assign_subjects_to_crc(session: Session, subject_ids: List[int], crc_id: int) -> int:
+    """批量将受试者分配给指定CRC，crc_id=0 时取消所有CRC分配"""
+    count = 0
+    
+    if crc_id == 0:
+        # 取消所有CRC分配
+        for subject_id in subject_ids:
+            subject = session.get(Subject, subject_id)
+            if not subject:
+                continue
+            if subject.assigned_crcs:
+                count += len(subject.assigned_crcs)
+                subject.assigned_crcs.clear()
+    else:
+        crc = session.get(User, crc_id)
+        if not crc:
+            raise ValueError("CRC不存在")
+        if crc.role != UserRole.CRC:
+            raise ValueError("只能将受试者分配给CRC角色")
+        
+        for subject_id in subject_ids:
+            subject = session.get(Subject, subject_id)
+            if not subject:
+                continue
+            if crc not in subject.assigned_crcs:
+                subject.assigned_crcs.append(crc)
+                count += 1
+    
+    if count > 0:
+        session.commit()
+    return count
+
+
 def get_crcs_for_subject(session: Session, subject_id: int) -> List[User]:
     """获取负责该受试者的所有CRC"""
     subject = session.get(Subject, subject_id)

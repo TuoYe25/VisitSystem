@@ -39,10 +39,11 @@
 | 后端框架 | FastAPI 0.104 |
 | 服务运行 | Uvicorn 0.24 |
 | ORM | SQLAlchemy 2.0 |
-| 数据库 | SQLite（aiosqlite） |
+| 数据库 | SQLite |
 | 模板引擎 | Jinja2 |
 | 数据校验 | Pydantic 2.5 |
 | Excel 处理 | openpyxl + pandas |
+| 拼音转换 | pypinyin |
 | 认证 | JWT + Cookie |
 
 ## 项目结构

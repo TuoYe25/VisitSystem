@@ -18,6 +18,9 @@
         <button class="btn btn-outline-danger btn-sm me-2" id="batchDeleteBtn" style="display:none" onclick="batchDelete()">
             <i class="bi bi-trash"></i> 批量删除
         </button>
+        <button class="btn btn-outline-warning btn-sm me-2" id="batchCrcBtn" style="display:none" onclick="openBatchCrcModal()">
+            <i class="bi bi-person-check"></i> 批量修改负责人
+        </button>
         <button class="btn btn-outline-primary btn-sm me-2" onclick="document.getElementById('importFile').click()">
             <i class="bi bi-upload"></i> Excel批量导入
         </button>
@@ -137,6 +140,31 @@
 </div>
 
 <!-- 编辑受试者 Modal 已移至 subject_detail.html -->
+
+<!-- 批量修改负责人 Modal -->
+<div class="modal fade" id="batchCrcModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">批量修改负责人</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">已选中 <strong id="batchCrcCount">0</strong> 名受试者</p>
+                <div class="mb-3">
+                    <label class="form-label">选择负责人</label>
+                    <select class="form-select" id="batchCrcSelect">
+                        <option value="0">未分配</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-warning" onclick="confirmBatchCrc()">确认修改</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -316,6 +344,7 @@ function toggleSelectAll(el) {
 function updateBatchDeleteBtn() {
     const checked = document.querySelectorAll('.row-checkbox:checked').length;
     document.getElementById('batchDeleteBtn').style.display = checked > 0 ? '' : 'none';
+    document.getElementById('batchCrcBtn').style.display = checked > 0 ? '' : 'none';
 }
 
 async function batchDelete() {
@@ -328,6 +357,65 @@ async function batchDelete() {
         body: JSON.stringify({ids})
     });
     location.reload();
+}
+
+// ============ 批量修改负责人 ============
+async function openBatchCrcModal() {
+    const checked = document.querySelectorAll('.row-checkbox:checked');
+    const count = checked.length;
+    if (count === 0) return;
+    
+    document.getElementById('batchCrcCount').textContent = count;
+    
+    // 加载CRC列表
+    try {
+        const crcs = await api('/api/crcs');
+        const select = document.getElementById('batchCrcSelect');
+        select.innerHTML = '<option value="0">未分配</option>';
+        crcs.forEach(crc => {
+            const option = document.createElement('option');
+            option.value = crc.id;
+            option.textContent = crc.display_name;
+            select.appendChild(option);
+        });
+    } catch (e) {
+        showToast('加载CRC列表失败: ' + e.message, 'error');
+        return;
+    }
+    
+    const modal = new bootstrap.Modal(document.getElementById('batchCrcModal'));
+    modal.show();
+}
+
+async function confirmBatchCrc() {
+    const select = document.getElementById('batchCrcSelect');
+    const crcId = parseInt(select.value);
+    // crcId = 0 表示"未分配"，是有效值
+    
+    const checked = document.querySelectorAll('.row-checkbox:checked');
+    const subjectIds = [...checked].map(cb => parseInt(cb.value));
+    
+    const actionText = crcId === 0 ? '取消分配' : '修改负责人';
+    if (!confirm(`确定将选中的 ${subjectIds.length} 名受试者${actionText}？`)) return;
+    
+    try {
+        await api('/api/subjects/batch-assign-crc', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({subject_ids: subjectIds, crc_id: crcId})
+        });
+        showToast(`成功${actionText}`, 'success');
+        
+        // 关闭模态框
+        const modalEl = document.getElementById('batchCrcModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        if (modal) modal.hide();
+        
+        // 刷新页面
+        location.reload();
+    } catch (e) {
+        showToast('批量修改失败: ' + e.message, 'error');
+    }
 }
 </script>
 {% endblock %}

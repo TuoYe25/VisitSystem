@@ -25,6 +25,7 @@ from auth import (
 from crud_user import (
     authenticate_user, create_user, get_viewable_subjects,
     assign_subject_to_crc, unassign_subject_from_crc,
+    batch_assign_subjects_to_crc,
     get_all_crcs, get_all_pis, get_crcs_for_subject,
     can_view_subject, can_edit_subject
 )
@@ -286,7 +287,7 @@ async def api_create_subject(data: SubjectCreate, user=Depends(get_current_user)
         existing = crud.get_subject_by_code(session, data.subject_code)
         if existing:
             raise HTTPException(status_code=400, detail="受试者编号已存在")
-        subject = crud.create_subject(session, data.subject_code, data.full_name, data.enrollment_date)
+        subject = crud.create_subject(session, data.subject_code, data.full_name, data.enrollment_date, user.id)
         return subject
     finally:
         session.close()
@@ -511,10 +512,36 @@ async def api_export_deviations(user=Depends(get_current_user)):
             "偏离类型": d["deviation_type"],
         } for d in deviations]
         df = pd.DataFrame(data)
-        path = "temp_export_deviations.xlsx"
+        path = os.path.join(tempfile.gettempdir(), "temp_export_deviations.xlsx")
         df.to_excel(path, index=False)
         return FileResponse(path, filename="方案偏离报表.xlsx",
                            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    finally:
+        session.close()
+
+
+@app.post("/api/subjects/batch-assign-crc")
+async def api_batch_assign_crc(data: dict, user=Depends(get_current_user)):
+    """批量修改受试者负责人（crc_id=0 表示取消分配）"""
+    subject_ids = data.get("subject_ids", [])
+    crc_id = data.get("crc_id")
+    
+    if not subject_ids:
+        raise HTTPException(status_code=400, detail="请提供要修改的受试者ID列表")
+    if crc_id is None:
+        raise HTTPException(status_code=400, detail="请选择负责人")
+    
+    session = get_session()
+    try:
+        # 检查权限
+        for sid in subject_ids:
+            s = crud.get_subject(session, sid)
+            if s and not can_edit_subject(user, s):
+                raise HTTPException(status_code=403, detail=f"无权限修改受试者 {s.subject_code} 的负责人")
+        
+        # 批量分配或取消分配
+        count = batch_assign_subjects_to_crc(session, subject_ids, crc_id)
+        return {"assigned": count}
     finally:
         session.close()
 
@@ -530,7 +557,7 @@ async def api_import(file: UploadFile = File(...), user=Depends(get_current_user
 
     session = get_session()
     try:
-        result = crud.import_subjects_from_excel(session, tmp.name)
+        result = crud.import_subjects_from_excel(session, tmp.name, user.id)
         return result
     finally:
         session.close()
@@ -541,7 +568,7 @@ async def api_import(file: UploadFile = File(...), user=Depends(get_current_user
 
 @app.get("/api/users")
 async def api_list_users(user=Depends(require_pi)):
-    """获取所有用户列表"""
+    """获取所有用户列表（仅PI）"""
     session = get_session()
     try:
         users = get_all_crcs(session) + get_all_pis(session)
@@ -556,6 +583,25 @@ async def api_list_users(user=Depends(require_pi)):
                 "subject_count": len(u.subjects) if u.role == UserRole.CRC else -1,
             }
             for u in users
+        ]
+    finally:
+        session.close()
+
+
+@app.get("/api/crcs")
+async def api_list_crcs(user=Depends(get_current_user)):
+    """获取CRC列表（所有登录用户）"""
+    session = get_session()
+    try:
+        crcs = get_all_crcs(session)
+        return [
+            {
+                "id": u.id,
+                "display_name": u.display_name,
+                "username": u.username,
+                "subject_count": len(u.subjects),
+            }
+            for u in crcs
         ]
     finally:
         session.close()

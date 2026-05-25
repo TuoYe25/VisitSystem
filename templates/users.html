@@ -1,116 +1,58 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>用户管理 - 受试者随访提醒系统</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f6fa; }
-        .nav {
-            background: #2c3e50; color: white; padding: 0 24px; height: 56px;
-            display: flex; align-items: center; justify-content: space-between;
-        }
-        .nav .brand { font-size: 16px; font-weight: 600; }
-        .nav-links { display: flex; gap: 8px; align-items: center; }
-        .nav-links a { color: #bdc3c7; text-decoration: none; padding: 6px 14px; border-radius: 4px; font-size: 14px; transition: all 0.2s; }
-        .nav-links a:hover, .nav-links a.active { background: #34495e; color: white; }
-        .nav-links a.active { background: #3498db; }
-        .nav .user-info { font-size: 13px; color: #bdc3c7; margin-right: 12px; }
-        .nav .role-badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
-        .role-pi { background: #e74c3c; color: white; }
-        .role-crc { background: #2ecc71; color: white; }
-        .container { max-width: 1200px; margin: 24px auto; padding: 0 24px; }
-        h2 { font-size: 20px; color: #2c3e50; margin-bottom: 20px; }
-        .card {
-            background: white; border-radius: 8px; padding: 24px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 20px;
-        }
-        .card h3 { font-size: 16px; color: #333; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #eee; }
-        .form-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
-        .form-group { flex: 1; min-width: 150px; }
-        .form-group label { display: block; font-size: 12px; color: #777; margin-bottom: 4px; }
-        .form-group input, .form-group select { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
-        .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; }
-        .btn-primary { background: #3498db; color: white; }
-        .btn-primary:hover { background: #2980b9; }
-        .btn-sm { padding: 4px 10px; font-size: 12px; }
-        .btn-outline { background: white; border: 1px solid #ddd; color: #555; }
-        .btn-outline:hover { background: #f5f5f5; }
-        .btn-danger { background: #e74c3c; color: white; }
-        .btn-danger:hover { background: #c0392b; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 13px; }
-        th { background: #f8f9fa; color: #555; font-weight: 600; }
-        .subject-tags { display: flex; flex-wrap: wrap; gap: 4px; }
-        .subject-tag {
-            display: inline-flex; align-items: center; gap: 4px;
-            background: #eef2f7; padding: 2px 8px; border-radius: 10px; font-size: 11px;
-        }
-        .subject-tag .remove { cursor: pointer; color: #e74c3c; font-weight: bold; }
-        .subject-tag .remove:hover { color: #c0392b; }
-        .empty-state { text-align: center; padding: 30px; color: #999; font-size: 14px; }
-        .toast { position: fixed; top: 20px; right: 20px; padding: 10px 20px; border-radius: 6px; color: white; font-size: 13px; z-index: 1000; display: none; }
-        .toast.success { background: #27ae60; }
-        .toast.error { background: #e74c3c; }
-    </style>
-</head>
-<body>
-    <nav class="nav">
-        <span class="brand">受试者随访提醒系统</span>
-        <div class="nav-links">
-            <a href="/">仪表盘</a>
-            <a href="/subjects">受试者</a>
-            <a href="/calendar">日历</a>
-            <a href="/deviations">方案偏离</a>
-            {% if current_user.role.value == 'PI' %}
-            <a href="/users" class="active">用户管理</a>
-            {% endif %}
-            <span class="user-info">
-                {{ current_user.display_name }}
-                <span class="role-badge {% if current_user.role.value == 'PI' %}role-pi{% else %}role-crc{% endif %}">{{ current_user.role.value }}</span>
-            </span>
-            <a href="#" onclick="logout()" style="color:#e74c3c;">退出</a>
-        </div>
-    </nav>
+{% extends "base.html" %}
+{% block title %}用户管理{% endblock %}
 
-    <div class="container">
-        <h2>用户管理</h2>
+{% block extra_head %}
+<style>
+    .role-badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+    .role-pi { background: #ef4444; color: white; }
+    .role-crc { background: #22c55e; color: white; }
+    
+</style>
+{% endblock %}
 
-        <!-- 创建用户 -->
-        <div class="card">
-            <h3>创建新用户</h3>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>用户名</label>
-                    <input type="text" id="newUsername" placeholder="英文字母和数字">
-                </div>
-                <div class="form-group">
-                    <label>显示名称</label>
-                    <input type="text" id="newDisplayName" placeholder="如：王协调员">
-                </div>
-                <div class="form-group">
-                    <label>密码</label>
-                    <input type="password" id="newPassword" placeholder="至少6位">
-                </div>
-                <div class="form-group">
-                    <label>角色</label>
-                    <select id="newRole">
-                        <option value="CRC">CRC（临床研究协调员）</option>
-                        <option value="PI">PI（主要研究者）</option>
-                    </select>
-                </div>
-                <div class="form-group" style="flex:0;">
-                    <button class="btn btn-primary" onclick="createUser()" style="margin-top:18px;">创建</button>
-                </div>
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0">用户管理</h4>
+</div>
+
+<!-- 创建用户 -->
+<div class="table-card mb-4">
+    <div class="card-header">创建新用户</div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">用户名</label>
+                <input type="text" class="form-control" id="newUsername" placeholder="英文字母和数字">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">显示名称</label>
+                <input type="text" class="form-control" id="newDisplayName" placeholder="如：王协调员">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">密码</label>
+                <input type="password" class="form-control" id="newPassword" placeholder="至少6位">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">角色</label>
+                <select class="form-select" id="newRole">
+                    <option value="CRC">CRC（临床研究协调员）</option>
+                    <option value="PI">PI（主要研究者）</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-primary w-100" onclick="createUser()">创建</button>
             </div>
         </div>
+    </div>
+</div>
 
-        <!-- 用户列表 -->
-        <div class="card">
-            <h3>用户列表</h3>
-            <table>
-                <thead>
+<!-- 用户列表 -->
+<div class="table-card mb-4">
+    <div class="card-header">用户列表</div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
                     <tr>
                         <th>用户名</th>
                         <th>显示名称</th>
@@ -119,92 +61,53 @@
                     </tr>
                 </thead>
                 <tbody id="userTableBody">
-                    <tr><td colspan="4" class="empty-state">加载中...</td></tr>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- CRC 受试者分配（仅PI可见） -->
-        <div class="card">
-            <h3>CRC 受试者分配</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>受试者编号</th>
-                        <th>姓名</th>
-                        <th>当前负责 CRC</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody id="assignmentTableBody">
-                    <tr><td colspan="4" class="empty-state">加载中...</td></tr>
+                    <tr><td colspan="4" class="text-center text-muted py-4">加载中...</td></tr>
                 </tbody>
             </table>
         </div>
     </div>
+</div>
 
-    <div class="toast" id="toast"></div>
 
-    <script>
-        const token = localStorage.getItem('token');
-        if (!token) { window.location.href = '/login'; }
+{% endblock %}
 
-        function api(path, opts = {}) {
-            opts.headers = { ...opts.headers, 'Authorization': 'Bearer ' + token };
-            return fetch(path, opts);
+{% block extra_scripts %}
+<script>
+    async function createUser() {
+        const username = document.getElementById('newUsername').value.trim();
+        const display_name = document.getElementById('newDisplayName').value.trim();
+        const password = document.getElementById('newPassword').value.trim();
+        const role = document.getElementById('newRole').value;
+
+        if (!username || !display_name || !password) {
+            showToast('请填写所有字段', 'error'); return;
+        }
+        if (password.length < 6) {
+            showToast('密码至少6位', 'error'); return;
         }
 
-        function logout() {
-            localStorage.clear();
-            window.location.href = '/login';
-        }
-
-        function showToast(msg, type) {
-            const t = document.getElementById('toast');
-            t.textContent = msg;
-            t.className = 'toast ' + type;
-            t.style.display = 'block';
-            setTimeout(() => t.style.display = 'none', 3000);
-        }
-
-        async function createUser() {
-            const username = document.getElementById('newUsername').value.trim();
-            const display_name = document.getElementById('newDisplayName').value.trim();
-            const password = document.getElementById('newPassword').value.trim();
-            const role = document.getElementById('newRole').value;
-
-            if (!username || !display_name || !password) {
-                showToast('请填写所有字段', 'error'); return;
-            }
-            if (password.length < 6) {
-                showToast('密码至少6位', 'error'); return;
-            }
-
-            const resp = await api('/api/users', {
+        try {
+            await api('/api/users', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password, display_name, role })
             });
-
-            if (resp.ok) {
-                showToast('用户创建成功', 'success');
-                document.getElementById('newUsername').value = '';
-                document.getElementById('newDisplayName').value = '';
-                document.getElementById('newPassword').value = '';
-                loadUsers();
-            } else {
-                const data = await resp.json();
-                showToast(data.detail || '创建失败', 'error');
-            }
+            showToast('用户创建成功', 'success');
+            document.getElementById('newUsername').value = '';
+            document.getElementById('newDisplayName').value = '';
+            document.getElementById('newPassword').value = '';
+            loadUsers();
+        } catch (e) {
+            // error already shown by api()
         }
+    }
 
-        async function loadUsers() {
-            const resp = await api('/api/users');
-            const users = await resp.json();
-
+    async function loadUsers() {
+        try {
+            const users = await api('/api/users');
             const tbody = document.getElementById('userTableBody');
             if (users.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="empty-state">暂无用户</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">暂无用户</td></tr>';
                 return;
             }
             tbody.innerHTML = users.map(u => `
@@ -215,94 +118,14 @@
                     <td>${u.subject_count >= 0 ? u.subject_count + ' 名受试者' : '全部'}</td>
                 </tr>
             `).join('');
+        } catch (e) {
+            // error already shown by api()
         }
+    }
 
-        async function loadAssignments() {
-            const [subjectsResp, crcsResp] = await Promise.all([
-                api('/api/subjects'),
-                api('/api/users')
-            ]);
-            const subjects = await subjectsResp.json();
-            const allUsers = await crcsResp.json();
-            const crcs = allUsers.filter(u => u.role === 'CRC');
-
-            const assignments = await Promise.all(subjects.map(async s => {
-                const crcResp = await api(`/api/subjects/${s.id}/crcs`);
-                const subjectCrcs = await crcResp.json();
-                return { subject: s, crcs: subjectCrcs };
-            }));
-
-            const tbody = document.getElementById('assignmentTableBody');
-            tbody.innerHTML = assignments.map(a => `
-                <tr>
-                    <td>${a.subject.subject_code}</td>
-                    <td>${a.subject.full_name}</td>
-                    <td>
-                        <div class="subject-tags">
-                            ${a.crcs.length === 0 ? '<span style="color:#999;font-size:12px;">未分配</span>' : ''}
-                            ${a.crcs.map(c => `
-                                <span class="subject-tag">
-                                    ${c.display_name}
-                                    <span class="remove" onclick="unassign(${a.subject.id}, ${c.id})" title="取消分配">&times;</span>
-                                </span>
-                            `).join('')}
-                        </div>
-                    </td>
-                    <td>
-                        <div style="display:flex; gap:4px; align-items:center;">
-                            <select id="crcSelect_${a.subject.id}" style="padding:4px 8px; border:1px solid #ddd; border-radius:4px; font-size:12px;">
-                                <option value="">选择CRC...</option>
-                                ${crcs.filter(c => !a.crcs.find(ac => ac.id === c.id)).map(c =>
-                                    `<option value="${c.id}">${c.display_name}</option>`
-                                ).join('')}
-                            </select>
-                            <button class="btn btn-outline btn-sm" onclick="assign(${a.subject.id})">分配</button>
-                        </div>
-                    </td>
-                </tr>
-            `).join('');
-        }
-
-        async function assign(subjectId) {
-            const sel = document.getElementById('crcSelect_' + subjectId);
-            const crcId = sel.value;
-            if (!crcId) return;
-
-            const resp = await api(`/api/subjects/${subjectId}/assign-crc`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ crc_id: parseInt(crcId) })
-            });
-
-            if (resp.ok) {
-                showToast('分配成功', 'success');
-                loadAssignments();
-                loadUsers();
-            } else {
-                const data = await resp.json();
-                showToast(data.detail || '分配失败', 'error');
-            }
-        }
-
-        async function unassign(subjectId, crcId) {
-            const resp = await api(`/api/subjects/${subjectId}/unassign-crc`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ crc_id: crcId })
-            });
-
-            if (resp.ok) {
-                showToast('已取消分配', 'success');
-                loadAssignments();
-                loadUsers();
-            } else {
-                const data = await resp.json();
-                showToast(data.detail || '操作失败', 'error');
-            }
-        }
-
+    // 页面加载时初始化
+    document.addEventListener('DOMContentLoaded', () => {
         loadUsers();
-        loadAssignments();
-    </script>
-</body>
-</html>
+    });
+</script>
+{% endblock %}

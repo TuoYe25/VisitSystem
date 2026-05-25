@@ -9,7 +9,7 @@ from pypinyin import lazy_pinyin
 
 from models import (
     Subject, Visit, SubjectStatus, VisitStatus, VisitType,
-    init_db, get_session
+    crc_subjects, init_db, get_session
 )
 from calculator import (
     calculate_visits, check_window_status, determine_deviation
@@ -24,8 +24,8 @@ def _get_pinyin_initials(name: str) -> str:
 # ============ 受试者 CRUD ============
 
 def create_subject(session: Session, subject_code: str, full_name: str,
-                   enrollment_date: date) -> Subject:
-    """创建受试者并自动生成访视计划"""
+                   enrollment_date: date, user_id: int = None) -> Subject:
+    """创建受试者并自动生成访视计划，自动将当前用户设为负责人"""
     name_abbr = _get_pinyin_initials(full_name)
     subject = Subject(
         subject_code=subject_code,
@@ -35,6 +35,12 @@ def create_subject(session: Session, subject_code: str, full_name: str,
     )
     session.add(subject)
     session.flush()  # 获取 subject.id
+
+    # 自动将当前用户设为负责人
+    if user_id:
+        session.execute(
+            crc_subjects.insert().values(user_id=user_id, subject_id=subject.id)
+        )
 
     # 自动生成 10 个访视节点
     visits_data = calculate_visits(enrollment_date)
@@ -348,20 +354,7 @@ def get_deviations(session: Session, subjects: List[Subject] = None) -> List[dic
             v.status = VisitStatus.DEVIATION
         session.commit()
 
-    # 同时标记超窗 COMPLETED → DEVIATION（修复历史数据）
-    completed_query = session.query(Visit).join(Subject).filter(
-        Visit.status == VisitStatus.COMPLETED,
-        Visit.actual_date.isnot(None),
-        Visit.window_start.isnot(None),
-        Visit.window_end.isnot(None),
-        session.query(Visit).filter(
-            Visit.id == Visit.id,
-            (Visit.actual_date < Visit.window_start) | (Visit.actual_date > Visit.window_end)
-        ).exists()
-    )
-    if subject_ids:
-        completed_query = completed_query.filter(Subject.id.in_(subject_ids))
-    # 简化处理：用原始SQL逻辑——在Python层检查
+    # 检查并修复超窗 COMPLETED → DEVIATION
     completed_visits = session.query(Visit).join(Subject).filter(
         Visit.status == VisitStatus.COMPLETED,
         Visit.actual_date.isnot(None),
@@ -411,8 +404,8 @@ def get_deviations(session: Session, subjects: List[Subject] = None) -> List[dic
 
 # ============ 批量导入 ============
 
-def import_subjects_from_excel(session: Session, file_path: str) -> dict:
-    """从 Excel 批量导入受试者"""
+def import_subjects_from_excel(session: Session, file_path: str, user_id: int = None) -> dict:
+    """从 Excel 批量导入受试者，自动将当前用户设为负责人"""
     import pandas as pd
 
     try:
@@ -481,7 +474,7 @@ def import_subjects_from_excel(session: Session, file_path: str) -> dict:
                     errors.append(f"受试者 {code} 已存在，已跳过")
                     continue
 
-                create_subject(session, code, name, enroll)
+                create_subject(session, code, name, enroll, user_id)
                 success += 1
             except Exception as e:
                 errors.append(f"导入 {row.get('subject_code', '未知')} 失败: {str(e)}")
@@ -497,6 +490,13 @@ def batch_delete_subjects(session: Session, subject_ids: list[int]) -> int:
     for sid in subject_ids:
         subject = session.get(Subject, sid)
         if subject:
+            # 先删除关联的 CRC 分配记录
+            session.execute(
+                crc_subjects.delete().where(crc_subjects.c.subject_id == sid)
+            )
+            # 再删除所有访视记录
+            session.query(Visit).filter(Visit.subject_id == sid).delete()
+            # 最后删除受试者
             session.delete(subject)
             deleted += 1
     session.commit()
