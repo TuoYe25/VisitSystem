@@ -121,7 +121,7 @@ class Visit(Base):
 
 
 # 数据库引擎
-DATABASE_URL = "sqlite:///C:/Git/VisitSystem/visitsystem.db"
+DATABASE_URL = "sqlite:///./visitsystem.db"
 engine = create_engine(DATABASE_URL, echo=False)
 
 
