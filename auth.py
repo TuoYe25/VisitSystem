@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 import jwt
 import datetime
-from models import get_session, User
+from models import get_db, User
 from crud_user import get_user_by_id
 
 SECRET_KEY = "your-secret-key-here"  # 生产环境应使用环境变量
@@ -38,7 +38,7 @@ def verify_token(token: str) -> Optional[dict]:
 def get_current_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_db)
 ) -> User:
     """获取当前登录用户（支持 Header 和 Cookie 两种方式）"""
     token = None

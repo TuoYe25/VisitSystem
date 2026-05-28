@@ -129,7 +129,7 @@ def can_view_subject(user: User, subject: Subject) -> bool:
     if user.role == UserRole.PI:
         return True
     if user.role == UserRole.CRC:
-        return user in subject.assigned_crcs
+        return any(crc.id == user.id for crc in subject.assigned_crcs)
     return False
 
 
@@ -138,7 +138,7 @@ def can_edit_subject(user: User, subject: Subject) -> bool:
     if user.role == UserRole.PI:
         return True
     if user.role == UserRole.CRC:
-        return user in subject.assigned_crcs
+        return any(crc.id == user.id for crc in subject.assigned_crcs)
     return False
 
 
@@ -148,4 +148,4 @@ def get_viewable_subjects(session: Session, user: User):
     if user.role == UserRole.PI:
         return session.query(Subject).all()
     else:
-        return user.subjects
+        return session.query(Subject).join(Subject.assigned_crcs).filter(User.id == user.id).all()

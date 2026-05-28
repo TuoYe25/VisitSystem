@@ -122,7 +122,14 @@ class Visit(Base):
 
 # 数据库引擎
 DATABASE_URL = "sqlite:///./visitsystem.db"
-engine = create_engine(DATABASE_URL, echo=False)
+engine = create_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=3600,  # 连接1小时后回收
+    pool_pre_ping=True  # 连接前先ping检查
+)
 
 
 def init_db():
@@ -131,4 +138,14 @@ def init_db():
 
 
 def get_session() -> Session:
+    """创建新 Session，调用方负责关闭。"""
     return Session(engine)
+
+
+def get_db():
+    """FastAPI 依赖注入用生成器，自动管理 Session 生命周期。"""
+    session = Session(engine)
+    try:
+        yield session
+    finally:
+        session.close()
